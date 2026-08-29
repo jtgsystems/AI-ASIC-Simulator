@@ -21,8 +21,8 @@ This is **not** a transistor-level BM1373 emulator. It does not reproduce propri
 ## Start it
 
 ```bash
-unzip bm1373-hash-reservoir-simulator.zip
-cd bm1373-hash-reservoir-simulator
+git clone https://github.com/jtgsystems/AI-ASIC-Simulator.git
+cd AI-ASIC-Simulator
 docker compose up --build
 ```
 
