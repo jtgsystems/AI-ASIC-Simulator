@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BM1373 Hash Reservoir Simulator</title>
+  <style>
+    :root { color-scheme: dark; font-family: Arial, sans-serif; }
+    body { margin: 0; background: #101418; color: #edf2f7; }
+    main { max-width: 1100px; margin: 0 auto; padding: 28px 18px 60px; }
+    h1 { margin-bottom: 8px; }
+    .muted { color: #aab7c4; line-height: 1.5; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin: 22px 0; }
+    .card { background: #182028; border: 1px solid #2d3a45; border-radius: 12px; padding: 16px; }
+    .value { font-size: 1.8rem; font-weight: 700; margin-top: 5px; }
+    button { background: #f0a020; border: 0; border-radius: 8px; padding: 11px 16px; font-weight: 700; cursor: pointer; }
+    button:disabled { opacity: .55; cursor: wait; }
+    canvas { width: 100%; height: 320px; background: #0d1115; border: 1px solid #2d3a45; border-radius: 10px; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #0d1115; padding: 14px; border-radius: 10px; min-height: 72px; }
+    a { color: #72b7ff; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Dual BM1373 Hash Reservoir Simulator</h1>
+  <p class="muted">A behavioural digital twin for experimenting with SHA-256 ASIC telemetry as reservoir-computing features. This is not transistor-level BM1373 emulation.</p>
+  <button id="simulate">Run sample simulation</button>
+  <button id="benchmark">Run benchmark</button>
+
+  <section class="grid">
+    <div class="card"><div>Average hashrate</div><div id="hashrate" class="value">—</div></div>
+    <div class="card"><div>Maximum temperature</div><div id="temperature" class="value">—</div></div>
+    <div class="card"><div>Power per chip</div><div id="power" class="value">—</div></div>
+    <div class="card"><div>Feature count</div><div id="features" class="value">—</div></div>
+  </section>
+
+  <canvas id="chart" width="1000" height="320"></canvas>
+  <h2>Result</h2>
+  <pre id="result">Open API documentation at /docs, or run a simulation.</pre>
+</main>
+<script>
+const result = document.getElementById('result');
+const simulateButton = document.getElementById('simulate');
+const benchmarkButton = document.getElementById('benchmark');
+const canvas = document.getElementById('chart');
+const ctx = canvas.getContext('2d');
+
+function makeSignal(length = 160) {
+  return Array.from({ length }, (_, i) => {
+    const base = Math.sin(i / 8) + 0.35 * Math.sin(i / 2.7);
+    const anomaly = i > 85 && i < 103 ? 1.15 : 0;
+    return base + anomaly;
+  });
+}
+
+function plotTelemetry(points) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = '#33414d';
+  ctx.beginPath();
+  for (let y = 40; y < canvas.height; y += 40) { ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); }
+  ctx.stroke();
+
+  const chips = [...new Set(points.map(point => point.chip_id))];
+  const strokes = ['#f0a020', '#72b7ff', '#9be28f', '#e58ac8'];
+  chips.forEach((chipId, chipIndex) => {
+    const series = points.filter(point => point.chip_id === chipId);
+    const values = series.map(point => point.hashrate_ths);
+    const min = Math.min(...values) * 0.96;
+    const max = Math.max(...values) * 1.04;
+    ctx.strokeStyle = strokes[chipIndex % strokes.length];
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    series.forEach((point, index) => {
+      const x = index / Math.max(1, series.length - 1) * canvas.width;
+      const y = canvas.height - ((point.hashrate_ths - min) / Math.max(0.001, max - min)) * canvas.height;
+      if (index === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  });
+}
+
+simulateButton.addEventListener('click', async () => {
+  simulateButton.disabled = true;
+  result.textContent = 'Running simulation…';
+  try {
+    const response = await fetch('/simulate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ signal: makeSignal(), seed: 1373, include_telemetry: true })
+    });
+    if (!response.ok) throw new Error(await response.text());
+    const data = await response.json();
+    document.getElementById('hashrate').textContent = `${data.summary.average_total_hashrate_ths.toFixed(2)} TH/s`;
+    document.getElementById('temperature').textContent = `${data.summary.maximum_temperature_c.toFixed(1)} °C`;
+    document.getElementById('power').textContent = `${data.summary.average_power_per_chip_w.toFixed(1)} W`;
+    document.getElementById('features').textContent = data.feature_count;
+    plotTelemetry(data.telemetry);
+    result.textContent = JSON.stringify({ disclaimer: data.disclaimer, summary: data.summary, first_features: data.features.slice(0, 16) }, null, 2);
+  } catch (error) {
+    result.textContent = String(error);
+  } finally {
+    simulateButton.disabled = false;
+  }
+});
+
+benchmarkButton.addEventListener('click', async () => {
+  benchmarkButton.disabled = true;
+  result.textContent = 'Training and evaluating synthetic classifiers…';
+  try {
+    const response = await fetch('/benchmark', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ samples_per_class: 50, sequence_length: 96, seed: 1373 })
+    });
+    if (!response.ok) throw new Error(await response.text());
+    result.textContent = JSON.stringify(await response.json(), null, 2);
+  } catch (error) {
+    result.textContent = String(error);
+  } finally {
+    benchmarkButton.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+services:
+  bm1373-simulator:
+    build:
+      context: .
+    container_name: bm1373-hash-reservoir
+    ports:
+      - "8000:8000"
+    environment:
+      SIM_RANDOM_SEED: "1373"
+      SIM_CHIP_COUNT: "2"
+      SIM_TARGET_TOTAL_THS: "10.0"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
